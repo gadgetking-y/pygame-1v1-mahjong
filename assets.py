@@ -15,12 +15,11 @@ class UIDrawer:
         for k, f in IMAGE_FN.items():
             p = os.path.join(assets_dir, f)
             if os.path.exists(p): self.imgs[k] = pygame.transform.smoothscale(pygame.image.load(p).convert_alpha(), (w, h))
-        
         ja_f = ["hiraginosansgbw3", "msgothic", "stheitimedium", "arialunicode", "applesdgothicneo", "notosanscjkjp"]
         fn = next((f for f in ja_f if f in pygame.font.get_fonts()), None)
         self.ui_f = pygame.font.SysFont(fn, 24)
         self.tl_f = pygame.font.SysFont(fn, 32, bold=True)
-        self.bg_f = pygame.font.SysFont(fn, 64, bold=True)
+        self.bg_f = pygame.font.SysFont(fn, 60, bold=True)
 
     def draw_t(self, x, y, name, back=False, highlight=False):
         rect = pygame.Rect(x, y, 54, 72)
@@ -36,17 +35,14 @@ class UIDrawer:
 
     def draw_msg(self, msg, yaku_res, han, fu, cost):
         pygame.draw.rect(self.screen, (0,0,0,230), (250,100,700,650), border_radius=15)
+        pygame.draw.rect(self.screen, (255,215,0), (250,100,700,650), 2, border_radius=15)
         txt = self.bg_f.render(msg, True, (255,215,0))
         self.screen.blit(txt, txt.get_rect(center=(600, 180)))
-        
-        info = f"{han}翻 {fu}符  合計 {cost}点"
-        info_s = self.tl_f.render(info, True, (255,255,255))
+        info_s = self.tl_f.render(f"{han}翻 {fu}符  合計 {cost}点", True, (255,255,255))
         self.screen.blit(info_s, info_s.get_rect(center=(600, 250)))
-        
         for i, y in enumerate(yaku_res[:12]):
-            ja_n = YAKU_JA.get(y['name'], y['name'])
-            name_s = self.ui_f.render(ja_n, True, (220,220,220))
-            han_s = self.ui_f.render(f"{y['han']}翻", True, (255,255,250))
-            self.screen.blit(name_s, (400, 300 + i*32))
-            self.screen.blit(han_s, (750, 300 + i*32))
+            name = YAKU_JA.get(y['name'], y['name'])
+            n_s = self.ui_f.render(name, True, (220,220,220))
+            h_s = self.ui_f.render(f"{y['han']}翻", True, (255,255,250))
+            self.screen.blit(n_s, (400, 300 + i*32)); self.screen.blit(h_s, (750, 300 + i*32))
         self.screen.blit(self.ui_f.render("Spaceキーで次局へ", True, (255,215,0)), (500, 700))

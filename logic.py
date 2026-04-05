@@ -1,5 +1,5 @@
 from mahjong.hand_calculating.hand import HandCalculator
-from mahjong.hand_calculating.hand_config import HandConfig
+from mahjong.hand_calculating.hand_config import HandConfig, OptionalRules
 from mahjong.tile import TilesConverter
 from mahjong.meld import Meld
 from mahjong.shanten import Shanten
@@ -21,21 +21,21 @@ class MahjongLogic:
         if include_ura: inds += [deck[-(6 + i*2)] for i in range(count)]
         return inds
 
-    def to_34(self, tile_ids, melds_data=[]):
-        all_ids = list(tile_ids)
-        for m in melds_data: all_ids.extend(m['ids'])
-        arr = [0] * 34
-        for tid in all_ids: arr[tid // 4] += 1
-        return arr
+    def to_34(self, ids, ms=[]):
+        a = [0] * 34
+        for tid in list(ids): a[tid // 4] += 1
+        for m in ms:
+            for tid in m['ids']: a[tid // 4] += 1
+        return a
 
-    def get_shanten(self, h_ids, m_data=[]):
-        try: return self.shanten_calc.calculate_shanten(self.to_34(h_ids, m_data))
+    def get_shanten(self, ids, ms=[]):
+        try: return self.shanten_calc.calculate_shanten(self.to_34(ids, ms))
         except: return 8
 
-    def is_win(self, h_ids, m_data=[]):
-        if len(h_ids) + sum(3 for _ in m_data) != 14: return False
-        c34 = self.to_34(h_ids, m_data)
-        if not m_data and sum(1 for c in c34 if c == 2) == 7: return True
+    def is_win(self, ids, ms=[]):
+        if len(ids) + sum(3 for _ in ms) != 14: return False
+        c34 = self.to_34(ids, ms)
+        if not ms and sum(1 for c in c34 if c == 2) == 7: return True
         def check(arr):
             try: idx = next(i for i, c in enumerate(arr) if c > 0)
             except StopIteration: return True
@@ -53,12 +53,14 @@ class MahjongLogic:
                 if check(nc): return True
         return False
 
-    def calculate_score(self, h_ids, win_id, melds_data, tsumo, riichi, dora_inds):
-        # melds_data: [{'ids': [id1, id2, id3], 'opened': True}, ...]
+    def calculate_score(self, h_ids, win_id, melds_data, tsumo, riichi, dora_inds, is_dealer=False):
         ms = [Meld(Meld.KAN if len(m['ids'])==4 else Meld.PON, m['ids'], opened=m['opened']) for m in melds_data]
-        config = HandConfig(is_tsumo=tsumo, is_riichi=riichi)
+        # 喰いタンあり、後付けありの設定
+        rules = OptionalRules(has_open_tanyao=True, has_aka_dora=False)
+        player_wind = 27 if is_dealer else 28
+        config = HandConfig(is_tsumo=tsumo, is_riichi=riichi, player_wind=player_wind, round_wind=27, options=rules)
         try:
-            # tilesには win_id も含めた「鳴いていない牌（closed_hand）」を渡す
+            # tiles: closed_hand_ids + win_tile_id
             return self.calculator.estimate_hand_value(h_ids, win_id, melds=ms, dora_indicators=dora_inds, config=config)
         except Exception as e:
             print(f"Logic Error: {e}")
