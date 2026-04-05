@@ -17,7 +17,7 @@ class MahjongGame:
         self.reset_round()
 
     def reset_round(self):
-        all_ids = [i for i in range(136) if not (4 <= i < 32)] # 2-player
+        all_ids = [i for i in range(136) if not (4 <= i < 32)]
         self.deck = all_ids; random.shuffle(self.deck)
         self.wall_idx, self.dora_count = 0, 1
         self.p_hand = sorted([self.draw_t() for _ in range(13)])
@@ -26,7 +26,8 @@ class MahjongGame:
         self.state, self.current_turn = "DRAW", "player"
         self.drawn_t, self.last_dis = None, None
         self.p_riichi, self.c_riichi, self.riichi_pending = False, False, False
-        self.msg, self.yaku_list, self.btns, self.timer = "", [], [], 0
+        self.msg, self.yaku_results, self.btns, self.timer = "", [], [], 0
+        self.res_han, self.res_fu, self.res_cost = 0, 0, 0
 
     def draw_t(self):
         if self.wall_idx < len(self.deck) - 14:
@@ -39,11 +40,17 @@ class MahjongGame:
         riichi = self.p_riichi if winner=="player" else self.c_riichi
         win_tile = self.drawn_t if tsumo else self.last_dis
         di = self.logic.get_dora_indicators(self.deck, self.dora_count, riichi)
+        # library requirement: tiles = closed_hand + win_tile
         res = self.logic.calculate_score(hand + [win_tile], win_tile, melds, tsumo, riichi, di)
-        if not res: self.msg = "和了エラー"
+        if not res: self.msg = "和了エラー"; self.yaku_results = []
         else:
-            c = res.cost['total']; self.p_score += c if winner=="player" else -c; self.c_score += c if winner=="cpu" else -c
-            self.msg = f"{winner.upper()} {'ツモ' if tsumo else 'ロン'}! {c}点"; self.yaku_list = [y.name for y in res.yaku]
+            self.res_cost = res.cost['total']
+            self.p_score += self.res_cost if winner=="player" else -self.res_cost
+            self.c_score += self.res_cost if winner=="cpu" else -self.res_cost
+            self.msg = f"{winner.upper()} {'ツモ' if tsumo else 'ロン'}!"
+            self.res_han, self.res_fu = res.han, res.fu
+            # Correctly access han_closed/han_open
+            self.yaku_results = [{'name': y.name, 'han': y.han_closed if not melds else y.han_open} for y in res.yaku]
         self.state = "END"
 
     def discard(self, idx):
@@ -60,10 +67,8 @@ class MahjongGame:
             if not t: self.msg, self.state = "流局", "END"; return
             self.drawn_t, self.btns = t, []
             if self.current_turn == "player":
-                if self.logic.is_win(self.p_hand + [t], self.p_melds):
-                    self.btns.append({"text": "TSUMO", "rect": pygame.Rect(950, 600, 120, 50)})
-                if self.p_hand.count(t) == 3 and not self.p_riichi:
-                    self.btns.append({"text": "KAN", "rect": pygame.Rect(950, 480, 120, 50)})
+                if self.logic.is_win(self.p_hand + [t], self.p_melds): self.btns.append({"text": "TSUMO", "rect": pygame.Rect(950, 600, 120, 50)})
+                if self.p_hand.count(t) == 3 and not self.p_riichi: self.btns.append({"text": "KAN", "rect": pygame.Rect(950, 480, 120, 50)})
                 if not self.p_riichi and not self.p_melds and self.logic.get_shanten(self.p_hand + [t]) <= 0:
                     self.btns.append({"text": "RIICHI", "rect": pygame.Rect(950, 540, 120, 50)})
                 self.state = "WAIT" if not (self.p_riichi and not any(b["text"]=="TSUMO" for b in self.btns)) else "AUTO"
@@ -82,10 +87,9 @@ class MahjongGame:
                 self.current_turn, self.state = "player", "CHECK"
         elif self.state == "CHECK":
             if self.current_turn == "player":
-                if self.logic.is_win(self.p_hand + [self.last_dis], self.p_melds):
-                    self.btns = [{"text": "RON", "rect": pygame.Rect(540, 450, 100, 50)}, {"text": "PASS", "rect": pygame.Rect(650, 450, 100, 50)}]
+                if self.logic.is_win(self.p_hand + [self.last_dis], self.p_melds): self.btns = [{"text": "RON", "rect": pygame.Rect(540, 450, 100, 50)}, {"text": "PASS", "rect": pygame.Rect(650, 450, 100, 50)}]
                 elif not self.p_riichi:
-                    tp = [tid // 4 for tid in self.p_hand]; ldp = self.last_dis // 4; c = tp.count(ldp)
+                    c = [tid//4 for tid in self.p_hand].count(self.last_dis//4)
                     if c >= 2: self.btns = [{"text": "KAN" if c==3 else "PON", "rect": pygame.Rect(540, 450, 100, 50)}, {"text": "PASS", "rect": pygame.Rect(650, 450, 100, 50)}]
                     else: self.state = "DRAW"
                 else: self.state = "DRAW"
@@ -102,52 +106,49 @@ class MahjongGame:
         for i, tid in enumerate(self.p_hand): self.drawer.draw_t(200 + i * 56, 740, self.logic.get_tile_str(tid), highlight=(self.state=="WAIT" and not self.p_riichi))
         if self.drawn_t is not None and self.current_turn=="player": self.drawer.draw_t(200 + len(self.p_hand)*56+25, 740, self.logic.get_tile_str(self.drawn_t))
         for i, m in enumerate(self.p_melds):
-            for j, tid in enumerate(m): self.drawer.draw_t(1000 - i*180 + j*56, 740, self.logic.get_tile_str(tid))
+            for j, tid in enumerate(m['ids']): self.drawer.draw_t(1000 - i*180 + j*56, 740, self.logic.get_tile_str(tid))
         for i, tid in enumerate(self.p_dis): self.drawer.draw_t(450 + (i%6)*56, 420 + (i//6)*72, self.logic.get_tile_str(tid))
         for i, tid in enumerate(self.c_dis): self.drawer.draw_t(450 + (i%6)*56, 330 - (i//6)*72, self.logic.get_tile_str(tid))
         pygame.draw.rect(self.screen, (0,0,0,150), (20, 450, 200, 150), border_radius=10)
-        self.screen.blit(self.drawer.ui_f.render(f"YOU: {self.p_score}", True, COLOR_WHITE), (40, 480)); self.screen.blit(self.drawer.ui_f.render(f"CPU: {self.c_score}", True, COLOR_WHITE), (40, 530))
+        self.screen.blit(self.drawer.ui_f.render(f"YOU: {self.p_score}", True, (255,255,255)), (40, 480)); self.screen.blit(self.drawer.ui_f.render(f"CPU: {self.c_score}", True, (255,255,255)), (40, 530))
         for b in self.btns:
-            pygame.draw.rect(self.screen, COLOR_GOLD if b["text"] in ["RON","TSUMO","RIICHI"] else COLOR_WHITE, b["rect"], border_radius=5)
-            self.screen.blit(self.drawer.ui_f.render(b["text"], True, COLOR_BLACK), b["rect"].move(25, 12))
-        if self.msg: self.drawer.draw_msg(self.msg, self.yaku_list)
+            pygame.draw.rect(self.screen, (255,215,0) if b["text"] in ["RON","TSUMO","RIICHI"] else (255,255,255), b["rect"], border_radius=5)
+            self.screen.blit(self.drawer.ui_f.render(b["text"], True, (0,0,0)), b["rect"].move(25, 12))
+        if self.msg: self.drawer.draw_msg(self.msg, self.yaku_results, self.res_han, self.res_fu, self.res_cost)
         pygame.display.flip()
-
-    def handle_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                pos = pygame.mouse.get_pos(); action_done = False
-                for b in self.btns:
-                    if b["rect"].collidepoint(pos):
-                        if b["text"] == "RON": self.win(False, "player")
-                        elif b["text"] == "TSUMO": self.win(True, "player")
-                        elif b["text"] == "PON":
-                            t = self.last_dis; targets = [x for x in self.p_hand if x//4 == t//4][:2]
-                            for x in targets: self.p_hand.remove(x)
-                            if self.c_dis: self.c_dis.pop()
-                            self.p_melds.append([t] + targets); self.current_turn, self.state, self.btns = "player", "WAIT", []
-                        elif b["text"] == "KAN":
-                            is_m = (self.state == "CHECK"); t = self.last_dis if is_m else self.drawn_t
-                            targets = [x for x in list(self.p_hand) if x//4 == t//4]
-                            for x in targets: self.p_hand.remove(x)
-                            if is_m and self.c_dis: self.c_dis.pop()
-                            self.p_melds.append([t] + targets); self.dora_count = min(5, self.dora_count+1); self.state = "DRAW"
-                        elif b["text"] == "RIICHI": self.riichi_pending, self.btns = True, []
-                        elif b["text"] == "PASS": self.btns, self.state = [], "DRAW"
-                        action_done = True; break
-                if not action_done and self.state == "WAIT" and self.current_turn == "player":
-                    if self.p_riichi and not self.riichi_pending: continue
-                    tc = False
-                    for i in range(len(self.p_hand)):
-                        if pygame.Rect(HAND_X+i*SPACING, HAND_Y, TILE_W, TILE_H).collidepoint(pos):
-                            self.discard(i); tc = True; break
-                    if not tc and self.drawn_t is not None and pygame.Rect(HAND_X+len(self.p_hand)*SPACING+GAP, HAND_Y, TILE_W, TILE_H).collidepoint(pos): self.discard(-1)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and self.state == "END": self.reset_round()
 
     def run(self):
         while True:
-            self.handle_events(); self.update(); self.draw(); self.clock.tick(FPS)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    pos = pygame.mouse.get_pos(); action_done = False
+                    for b in self.btns:
+                        if b["rect"].collidepoint(pos):
+                            if b["text"] == "RON": self.win(False, "player")
+                            elif b["text"] == "TSUMO": self.win(True, "player")
+                            elif b["text"] == "PON":
+                                t = self.last_dis; targets = [x for x in self.p_hand if x//4 == t//4][:2]
+                                for x in targets: self.p_hand.remove(x)
+                                if self.c_dis: self.c_dis.pop()
+                                self.p_melds.append({'ids': [t] + targets, 'opened': True}); self.current_turn, self.state, self.btns = "player", "WAIT", []
+                            elif b["text"] == "KAN":
+                                is_m = (self.state == "CHECK"); t = self.last_dis if is_m else self.drawn_t
+                                targets = [x for x in list(self.p_hand) if x//4 == t//4]
+                                for x in targets: self.p_hand.remove(x)
+                                if is_m and self.c_dis: self.c_dis.pop()
+                                self.p_melds.append({'ids': [t] + targets, 'opened': not is_m}); self.dora_count = min(5, self.dora_count+1); self.state = "DRAW"
+                            elif b["text"] == "RIICHI": self.riichi_pending, self.btns = True, []
+                            elif b["text"] == "PASS": self.btns, self.state = [], "DRAW"
+                            action_done = True; break
+                    if not action_done and self.state == "WAIT" and self.current_turn == "player":
+                        if self.p_riichi and not self.riichi_pending: continue
+                        tc = False
+                        for i in range(len(self.p_hand)):
+                            if pygame.Rect(200+i*56, 740, 54, 72).collidepoint(pos):
+                                self.discard(i); tc = True; break
+                        if not tc and self.drawn_t is not None and pygame.Rect(200+len(self.p_hand)*56+25, 740, 54, 72).collidepoint(pos): self.discard(-1)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and self.state == "END": self.reset_round()
+            self.update(); self.draw(); self.clock.tick(FPS)
 
-if __name__ == "__main__":
-    MahjongGame().run()
+if __name__ == "__main__": MahjongGame().run()

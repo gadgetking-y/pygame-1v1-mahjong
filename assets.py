@@ -11,13 +11,11 @@ def download_assets(assets_dir):
 
 class UIDrawer:
     def __init__(self, screen, assets_dir, w, h):
-        self.screen = screen
-        self.imgs = {}
+        self.screen = screen; self.imgs = {}
         for k, f in IMAGE_FN.items():
             p = os.path.join(assets_dir, f)
             if os.path.exists(p): self.imgs[k] = pygame.transform.smoothscale(pygame.image.load(p).convert_alpha(), (w, h))
         
-        # Proper Japanese font search
         ja_f = ["hiraginosansgbw3", "msgothic", "stheitimedium", "arialunicode", "applesdgothicneo", "notosanscjkjp"]
         fn = next((f for f in ja_f if f in pygame.font.get_fonts()), None)
         self.ui_f = pygame.font.SysFont(fn, 24)
@@ -36,12 +34,19 @@ class UIDrawer:
         pygame.draw.rect(self.screen, (0,0,0), rect, 1, border_radius=4)
         if highlight: pygame.draw.rect(self.screen, (255,215,0), rect, 3, border_radius=4)
 
-    def draw_msg(self, msg, yaku_list):
-        pygame.draw.rect(self.screen, (0,0,0,230), (300,150,600,550), border_radius=15)
+    def draw_msg(self, msg, yaku_res, han, fu, cost):
+        pygame.draw.rect(self.screen, (0,0,0,230), (250,100,700,650), border_radius=15)
         txt = self.bg_f.render(msg, True, (255,215,0))
-        self.screen.blit(txt, txt.get_rect(center=(600, 230)))
-        for i, y in enumerate(yaku_list[:12]):
-            name = YAKU_JA.get(y, y)
-            yt = self.ui_f.render(name, True, (255,255,255))
-            self.screen.blit(yt, yt.get_rect(center=(600, 300 + i*32)))
-        self.screen.blit(self.ui_f.render("Spaceキーで次局へ", True, (255,215,0)), (500, 660))
+        self.screen.blit(txt, txt.get_rect(center=(600, 180)))
+        
+        info = f"{han}翻 {fu}符  合計 {cost}点"
+        info_s = self.tl_f.render(info, True, (255,255,255))
+        self.screen.blit(info_s, info_s.get_rect(center=(600, 250)))
+        
+        for i, y in enumerate(yaku_res[:12]):
+            ja_n = YAKU_JA.get(y['name'], y['name'])
+            name_s = self.ui_f.render(ja_n, True, (220,220,220))
+            han_s = self.ui_f.render(f"{y['han']}翻", True, (255,255,250))
+            self.screen.blit(name_s, (400, 300 + i*32))
+            self.screen.blit(han_s, (750, 300 + i*32))
+        self.screen.blit(self.ui_f.render("Spaceキーで次局へ", True, (255,215,0)), (500, 700))
