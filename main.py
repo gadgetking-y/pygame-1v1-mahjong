@@ -50,7 +50,7 @@ class MahjongGame:
         if not tsumo and self.is_furiten(hand[:-1], melds, discards): return False
         di = self.logic.get_dora_indicators(self.deck, self.dora_count, riichi)
         res = self.logic.calculate_score(hand, win_tile, melds, tsumo, riichi, di, is_dealer)
-        return res is not None and not hasattr(res, 'error')
+        return res is not None and getattr(res, 'error', None) is None
 
     def win(self, tsumo, winner):
         hand = list(self.p_hand if winner=="player" else self.c_hand)
