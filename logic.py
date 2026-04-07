@@ -81,11 +81,18 @@ class MahjongLogic:
         return w
 
     def calculate_score(self, h_ids, win_id, melds_data, tsumo, riichi, dora_inds, is_dealer=False):
+        # 鳴き牌も含めた全手牌リストを作成
+        all_h_ids = list(h_ids)
+        for m in melds_data:
+            for tid in m['ids']:
+                if tid not in all_h_ids:
+                    all_h_ids.append(tid)
+        
         ms = [Meld(Meld.KAN if len(m['ids'])==4 else Meld.PON, m['ids'], opened=m['opened']) for m in melds_data]
         rules = OptionalRules(has_open_tanyao=True, has_aka_dora=False)
         player_wind = 27 if is_dealer else 28
         config = HandConfig(is_tsumo=tsumo, is_riichi=riichi, player_wind=player_wind, round_wind=27, options=rules)
         try:
-            return self.calculator.estimate_hand_value(h_ids, win_id, melds=ms, dora_indicators=dora_inds, config=config)
+            return self.calculator.estimate_hand_value(all_h_ids, win_id, melds=ms, dora_indicators=dora_inds, config=config)
         except Exception as e:
             return type('Obj', (object,), {'error': str(e)})
