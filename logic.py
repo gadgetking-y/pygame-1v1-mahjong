@@ -51,6 +51,12 @@ class MahjongLogic:
         
         c34 = self.to_34(h_ids, m_data)
         
+        # 国士無双判定 (鳴きがない場合のみ)
+        if not m_data:
+            yaochu = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33]
+            if all(c34[i] >= 1 for i in yaochu) and sum(c34[i] for i in yaochu) == 14:
+                return True
+
         # 七対子判定 (鳴きがない場合のみ)
         if not m_data and sum(1 for c in c34 if c == 2) == 7:
             return True
@@ -87,7 +93,7 @@ class MahjongLogic:
         return w
 
     def calculate_score(self, h_ids, win_id, melds_data, tsumo, riichi, dora_inds, is_dealer=False):
-        from mahjong.constants import EAST, SOUTH, WEST, NORTH
+        from mahjong.constants import EAST, SOUTH
         
         # 鳴き牌も含めた「すべての手牌」を作成
         all_h_ids = list(h_ids)
@@ -111,6 +117,11 @@ class MahjongLogic:
                     m_type = Meld.CHI
             ms.append(Meld(m_type, m['ids'], opened=m['opened']))
 
+        # ドラと裏ドラを分離 (dora_inds の後半半分が裏ドラ、リーチ時のみ)
+        d_count = len(dora_inds) // 2 if riichi else len(dora_inds)
+        d_indicators = dora_inds[:d_count]
+        u_indicators = dora_inds[d_count:] if riichi else []
+
         rules = OptionalRules(has_open_tanyao=True, has_aka_dora=False)
         
         # 風の定数マッピング
@@ -121,6 +132,6 @@ class MahjongLogic:
         
         try:
             # tiles に「全タイル」、 win_tile に「和了牌」を渡す
-            return self.calculator.estimate_hand_value(all_h_ids, win_id, melds=ms, dora_indicators=dora_inds, config=config)
+            return self.calculator.estimate_hand_value(all_h_ids, win_id, melds=ms, dora_indicators=d_indicators, ura_dora_indicators=u_indicators, config=config)
         except Exception as e:
             return type('Obj', (object,), {'error': str(e)})

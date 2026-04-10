@@ -99,15 +99,20 @@ class MahjongGame:
                 return
             self.drawn_t, self.btns = t, []
             if self.current_turn == "player":
-                # 枚数確認: 手牌 + 鳴き面子x3 = 13 (ツモ牌含まず) の時のみ判定
+                # 枚数確認: 手牌 + 鳴き面子x3 = 13 (ツモ牌含まず、カンも1面子3枚換算)
                 total = len(self.p_hand) + sum(3 for _ in self.p_melds)
                 if total == 13:
                     if self.logic.is_win(self.p_hand + [t], self.p_melds):
                         if self.can_win(self.p_hand + [t], t, self.p_melds, True, self.p_riichi, self.dealer=="player", self.p_dis):
                             self.btns.append({"text": "TSUMO", "rect": pygame.Rect(950, 600, 120, 50)})
+                
+                # 槓の判定 (リーチ中でも暗槓は可能だが、待ちが変わらない判定は簡易的に「リーチ前」のみ許可)
                 kinds = [x//4 for x in self.p_hand]; t_kind = t//4
-                if kinds.count(t_kind) == 3 and not self.p_riichi: self.btns.append({"text": "KAN", "rect": pygame.Rect(950, 480, 120, 50)})
-                if not self.p_riichi and not self.p_melds and self.logic.get_shanten(self.p_hand + [t]) <= 0: self.btns.append({"text": "RIICHI", "rect": pygame.Rect(950, 540, 120, 50)})
+                if kinds.count(t_kind) == 3 and not self.p_riichi:
+                    self.btns.append({"text": "KAN", "rect": pygame.Rect(950, 480, 120, 50)})
+                
+                if not self.p_riichi and not self.p_melds and self.logic.get_shanten(self.p_hand + [t]) <= 0:
+                    self.btns.append({"text": "RIICHI", "rect": pygame.Rect(950, 540, 120, 50)})
                 self.state = "WAIT" if not (self.p_riichi and not any(b["text"]=="TSUMO" for b in self.btns)) else "AUTO"
                 if self.state == "AUTO": self.timer = now + 800
             else: self.timer, self.state = now + 1000, "CPU"
