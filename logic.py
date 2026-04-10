@@ -89,13 +89,22 @@ class MahjongLogic:
     def calculate_score(self, h_ids, win_id, melds_data, tsumo, riichi, dora_inds, is_dealer=False):
         from mahjong.constants import EAST, SOUTH, WEST, NORTH
         
-        # ms = [Meld(Meld.KAN if len(m['ids'])==4 else Meld.PON, m['ids'], opened=m['opened']) for m in melds_data]
+        # 鳴き牌も含めた「すべての手牌」を作成
+        all_h_ids = list(h_ids)
+        for m in melds_data:
+            for tid in m['ids']:
+                if tid not in all_h_ids:
+                    all_h_ids.append(tid)
+        
+        # win_id が all_h_ids に含まれていることを保証
+        if win_id not in all_h_ids:
+            all_h_ids.append(win_id)
+
         ms = []
         for m in melds_data:
             m_type = Meld.PON
             if len(m['ids']) == 4:
                 m_type = Meld.KAN
-            # 順子の判定（簡易）
             elif len(m['ids']) == 3:
                 kinds = sorted([tid // 4 for tid in m['ids']])
                 if kinds[0] + 1 == kinds[1] and kinds[1] + 1 == kinds[2]:
@@ -104,24 +113,14 @@ class MahjongLogic:
 
         rules = OptionalRules(has_open_tanyao=True, has_aka_dora=False)
         
-        # 風の定数マッピング (East=27, South=28, West=29, North=30)
+        # 風の定数マッピング
         player_wind = EAST if is_dealer else SOUTH
         round_wind = EAST
         
         config = HandConfig(is_tsumo=tsumo, is_riichi=riichi, player_wind=player_wind, round_wind=round_wind, options=rules)
         
         try:
-            # tiles には鳴き牌を含めない（門前部分のタイル＋和了牌のみ）のが一般的
-            # ただし、一部のバージョンでは合計14枚（カンを除く）を求める場合があるため、
-            # エラーが出た場合のフォールバックとして全タイルを渡すようにします。
-            res = self.calculator.estimate_hand_value(h_ids, win_id, melds=ms, dora_indicators=dora_inds, config=config)
-            if res.error == 'hand_not_winning':
-                # フォールバック: 全タイル（鳴き牌込み）を渡して再試行
-                all_h_ids = list(h_ids)
-                for m in melds_data:
-                    for tid in m['ids']:
-                        if tid not in all_h_ids: all_h_ids.append(tid)
-                res = self.calculator.estimate_hand_value(all_h_ids, win_id, melds=ms, dora_indicators=dora_inds, config=config)
-            return res
+            # tiles に「全タイル」、 win_tile に「和了牌」を渡す
+            return self.calculator.estimate_hand_value(all_h_ids, win_id, melds=ms, dora_indicators=dora_inds, config=config)
         except Exception as e:
             return type('Obj', (object,), {'error': str(e)})
