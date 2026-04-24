@@ -92,7 +92,20 @@ class MahjongLogic:
             if self.is_win(list(h_ids) + [i * 4], m_data): w.append(i)
         return w
 
-    def calculate_score(self, h_ids, win_id, melds_data, tsumo, riichi, dora_inds, is_dealer=False):
+    def calculate_score(
+        self,
+        h_ids,
+        win_id,
+        melds_data,
+        tsumo,
+        riichi,
+        dora_inds,
+        is_dealer=False,
+        is_ippatsu=False,
+        is_rinshan=False,
+        is_haitei=False,
+        is_houtei=False,
+    ):
         from mahjong.constants import EAST, SOUTH
         
         # 鳴き牌も含めた「すべての手牌」を作成
@@ -128,7 +141,17 @@ class MahjongLogic:
         player_wind = EAST if is_dealer else SOUTH
         round_wind = EAST
         
-        config = HandConfig(is_tsumo=tsumo, is_riichi=riichi, player_wind=player_wind, round_wind=round_wind, options=rules)
+        config = HandConfig(
+            is_tsumo=tsumo,
+            is_riichi=riichi,
+            is_ippatsu=is_ippatsu,
+            is_rinshan=is_rinshan,
+            is_haitei=is_haitei,
+            is_houtei=is_houtei,
+            player_wind=player_wind,
+            round_wind=round_wind,
+            options=rules,
+        )
         
         try:
             # tiles に「全タイル」、 win_tile に「和了牌」を渡す

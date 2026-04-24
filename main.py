@@ -26,6 +26,10 @@ class MahjongGame:
         self.state, self.current_turn = "DRAW", self.dealer
         self.drawn_t, self.last_dis = None, None
         self.p_riichi, self.c_riichi, self.riichi_pending = False, False, False
+        self.p_ippatsu_pending, self.c_ippatsu_pending = False, False
+        self.rinshan_turn = None
+        self.draw_context = {"is_rinshan": False, "is_haitei": False}
+        self.last_discard_context = {"is_houtei": False}
         self.msg, self.yaku_results, self.btns, self.timer = "", [], [], 0
         self.res_han, self.res_fu, self.res_cost = 0, 0, 0
 
@@ -45,11 +49,26 @@ class MahjongGame:
             if w in discarded_kinds: return True
         return False
 
-    def can_win(self, hand, win_tile, melds, tsumo, riichi, is_dealer, discards):
+    def clear_ippatsu(self):
+        self.p_ippatsu_pending, self.c_ippatsu_pending = False, False
+
+    def get_win_context(self, winner, tsumo):
+        ctx = {"is_ippatsu": self.p_ippatsu_pending if winner=="player" else self.c_ippatsu_pending}
+        if tsumo:
+            ctx["is_rinshan"] = self.draw_context.get("is_rinshan", False)
+            ctx["is_haitei"] = self.draw_context.get("is_haitei", False)
+            ctx["is_houtei"] = False
+        else:
+            ctx["is_rinshan"] = False
+            ctx["is_haitei"] = False
+            ctx["is_houtei"] = self.last_discard_context.get("is_houtei", False)
+        return ctx
+
+    def can_win(self, hand, win_tile, melds, tsumo, riichi, is_dealer, discards, win_context=None):
         """形だけでなく「役があるか」も事前に厳密にチェック"""
         if not tsumo and self.is_furiten(hand[:-1], melds, discards): return False
         di = self.logic.get_dora_indicators(self.deck, self.dora_count, riichi)
-        res = self.logic.calculate_score(hand, win_tile, melds, tsumo, riichi, di, is_dealer)
+        res = self.logic.calculate_score(hand, win_tile, melds, tsumo, riichi, di, is_dealer, **(win_context or {}))
         return res is not None and getattr(res, 'error', None) is None
 
     def win(self, tsumo, winner):
@@ -58,9 +77,9 @@ class MahjongGame:
         r = self.p_riichi if winner=="player" else self.c_riichi
         win_t = self.drawn_t if tsumo else self.last_dis
         di = self.logic.get_dora_indicators(self.deck, self.dora_count, r)
-        res = self.logic.calculate_score(hand + [win_t], win_t, m, tsumo, r, di, winner==self.dealer)
+        res = self.logic.calculate_score(hand + [win_t], win_t, m, tsumo, r, di, winner==self.dealer, **self.get_win_context(winner, tsumo))
         
-        if not res or hasattr(res, 'error'): 
+        if not res or getattr(res, 'error', None) is not None:
             err_msg = getattr(res, 'error', '役なし')
             self.msg = f"和了不可: {err_msg}"; self.yaku_results = []
             if winner != self.dealer: self.advance_round_logical()
@@ -81,29 +100,40 @@ class MahjongGame:
         if self.dealer == "player": self.match_round += 1
 
     def discard(self, idx):
+        if self.p_riichi and not self.riichi_pending: self.p_ippatsu_pending = False
         is_r = self.riichi_pending; t = self.drawn_t if idx == -1 else self.p_hand.pop(idx)
         if idx != -1 and self.drawn_t is not None: self.p_hand.append(self.drawn_t)
         self.p_hand = sorted(self.p_hand); self.p_dis.append({'id': t, 'horizontal': is_r}); self.last_dis, self.drawn_t = t, None
-        if self.riichi_pending: self.p_riichi, self.p_score, self.riichi_pending = True, self.p_score-1000, False
+        self.last_discard_context = {"is_houtei": self.draw_context.get("is_haitei", False)}
+        self.draw_context = {"is_rinshan": False, "is_haitei": False}
+        if self.riichi_pending:
+            self.p_riichi, self.p_score, self.riichi_pending, self.p_ippatsu_pending = True, self.p_score-1000, False, True
         self.current_turn, self.state = "cpu", "CHECK"
 
     def update(self):
         if self.showing_final: return
         now = pygame.time.get_ticks()
         if self.state == "DRAW":
+            is_last_live_tile = self.wall_idx == len(self.deck) - 15
             t = self.draw_t()
             if t is None:
+                self.draw_context = {"is_rinshan": False, "is_haitei": False}
+                self.last_discard_context = {"is_houtei": False}
                 self.msg, self.state = "流局", "END"
                 if self.logic.is_win(self.p_hand, self.p_melds) or self.logic.is_win(self.c_hand, self.c_melds): self.renchan += 1
                 else: self.advance_round_logical()
                 return
+            is_rinshan = self.rinshan_turn == self.current_turn
+            self.draw_context = {"is_rinshan": is_rinshan, "is_haitei": is_last_live_tile and not is_rinshan}
+            self.last_discard_context = {"is_houtei": False}
+            self.rinshan_turn = None
             self.drawn_t, self.btns = t, []
             if self.current_turn == "player":
                 # 枚数確認: 手牌 + 鳴き面子x3 = 13 (ツモ牌含まず、カンも1面子3枚換算)
                 total = len(self.p_hand) + sum(3 for _ in self.p_melds)
                 if total == 13:
                     if self.logic.is_win(self.p_hand + [t], self.p_melds):
-                        if self.can_win(self.p_hand + [t], t, self.p_melds, True, self.p_riichi, self.dealer=="player", self.p_dis):
+                        if self.can_win(self.p_hand + [t], t, self.p_melds, True, self.p_riichi, self.dealer=="player", self.p_dis, self.get_win_context("player", True)):
                             self.btns.append({"text": "TSUMO", "rect": pygame.Rect(950, 600, 120, 50)})
                 
                 # 槓の判定 (リーチ中でも暗槓は可能だが、待ちが変わらない判定は簡易的に「リーチ前」のみ許可)
@@ -119,19 +149,23 @@ class MahjongGame:
         elif self.state == "AUTO" and now > self.timer: self.discard(-1)
         elif self.state == "CPU" and now > self.timer:
             full = self.c_hand + [self.drawn_t]
-            if self.logic.is_win(full, self.c_melds) and self.can_win(full, self.drawn_t, self.c_melds, True, self.c_riichi, self.dealer=="cpu", self.c_dis): self.win(True, "cpu")
+            if self.logic.is_win(full, self.c_melds) and self.can_win(full, self.drawn_t, self.c_melds, True, self.c_riichi, self.dealer=="cpu", self.c_dis, self.get_win_context("cpu", True)): self.win(True, "cpu")
             else:
                 bt, ms = full[0], 10
                 for tx in full:
                     tmp = [x for x in full if x != tx]; s = self.logic.get_shanten(tmp, self.c_melds)
                     if s < ms: ms, bt = s, tx
                 full.remove(bt); self.c_hand = sorted(full); self.drawn_t, is_h = None, False
-                if not self.c_riichi and ms <= 0 and not self.c_melds: self.c_riichi, self.c_score, is_h = True, self.c_score-1000, True
+                if self.c_riichi: self.c_ippatsu_pending = False
+                if not self.c_riichi and ms <= 0 and not self.c_melds:
+                    self.c_riichi, self.c_score, is_h, self.c_ippatsu_pending = True, self.c_score-1000, True, True
                 self.c_dis.append({'id': bt, 'horizontal': is_h}); self.last_dis = bt; self.current_turn, self.state = "player", "CHECK"
+                self.last_discard_context = {"is_houtei": self.draw_context.get("is_haitei", False)}
+                self.draw_context = {"is_rinshan": False, "is_haitei": False}
         elif self.state == "CHECK":
             if self.current_turn == "player":
                 if self.logic.is_win(self.p_hand + [self.last_dis], self.p_melds):
-                    if self.can_win(self.p_hand + [self.last_dis], self.last_dis, self.p_melds, False, self.p_riichi, self.dealer=="player", self.p_dis):
+                    if self.can_win(self.p_hand + [self.last_dis], self.last_dis, self.p_melds, False, self.p_riichi, self.dealer=="player", self.p_dis, self.get_win_context("player", False)):
                         self.btns = [{"text": "RON", "rect": pygame.Rect(540, 450, 100, 50)}, {"text": "PASS", "rect": pygame.Rect(650, 450, 100, 50)}]
                     else: self.state = "DRAW"
                 elif not self.p_riichi:
@@ -140,7 +174,7 @@ class MahjongGame:
                     else: self.state = "DRAW"
                 else: self.state = "DRAW"
             else:
-                if self.logic.is_win(self.c_hand + [self.last_dis], self.c_melds) and self.can_win(self.c_hand + [self.last_dis], self.last_dis, self.c_melds, False, self.c_riichi, self.dealer=="cpu", self.c_dis): self.win(False, "cpu")
+                if self.logic.is_win(self.c_hand + [self.last_dis], self.c_melds) and self.can_win(self.c_hand + [self.last_dis], self.last_dis, self.c_melds, False, self.c_riichi, self.dealer=="cpu", self.c_dis, self.get_win_context("cpu", False)): self.win(False, "cpu")
                 else: self.state = "DRAW"
 
     def draw(self):
@@ -190,6 +224,7 @@ class MahjongGame:
                             if b["text"] == "RON": self.win(False, "player")
                             elif b["text"] == "TSUMO": self.win(True, "player")
                             elif b["text"] == "PON":
+                                self.clear_ippatsu()
                                 t = self.last_dis
                                 if self.drawn_t is not None: self.p_hand.append(self.drawn_t); self.drawn_t = None
                                 targets = [x for x in list(self.p_hand) if x//4 == t//4][:2]
@@ -197,6 +232,7 @@ class MahjongGame:
                                 if self.c_dis: self.c_dis.pop()
                                 self.p_melds.append({'ids': [t] + targets, 'opened': True}); self.current_turn, self.state, self.btns = "player", "WAIT", []
                             elif b["text"] == "KAN":
+                                self.clear_ippatsu()
                                 is_m = (self.state == "CHECK"); t = self.last_dis if is_m else self.drawn_t
                                 if is_m and self.drawn_t is not None: self.p_hand.append(self.drawn_t); self.drawn_t = None
                                 ts = [x for x in list(self.p_hand) if x//4 == t//4]
@@ -204,7 +240,7 @@ class MahjongGame:
                                 for x in ts: self.p_hand.remove(x)
                                 if is_m: self.c_dis.pop()
                                 else: self.drawn_t = None
-                                self.p_melds.append({'ids': [t] + ts, 'opened': is_m}); self.dora_count = min(5, self.dora_count+1); self.state = "DRAW"
+                                self.p_melds.append({'ids': [t] + ts, 'opened': is_m}); self.dora_count = min(5, self.dora_count+1); self.rinshan_turn, self.state = "player", "DRAW"
                             elif b["text"] == "RIICHI": self.riichi_pending, self.btns = True, []
                             elif b["text"] == "PASS": self.btns, self.state = [], "DRAW"
                             action_done = True; break
