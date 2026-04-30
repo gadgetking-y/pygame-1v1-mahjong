@@ -1,10 +1,10 @@
 import os
-SCREEN_W, SCREEN_H, FPS = 1200, 850, 60
+SCREEN_W, SCREEN_H, FPS = 1500, 850, 60
 COLOR_TABLE = (34, 139, 34)
 COLOR_WHITE, COLOR_BLACK, COLOR_GOLD = (255,255,255), (0,0,0), (255,215,0)
 COLOR_TILE_BACK, COLOR_TILE_BODY, COLOR_SHADOW = (255,120,0), (255,255,250), (20,60,20)
-TILE_W, TILE_H = 54, 72
-HAND_Y, HAND_X, SPACING, GAP = 740, 200, 56, 25
+TILE_W, TILE_H = 50, 66
+HAND_Y, HAND_X, SPACING, GAP = 740, 200, 52, 18
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 HONOR_NAMES = {1: "東", 2: "南", 3: "西", 4: "北", 5: "白", 6: "發", 7: "中"}

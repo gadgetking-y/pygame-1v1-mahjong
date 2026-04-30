@@ -11,7 +11,7 @@ def download_assets(assets_dir):
 
 class UIDrawer:
     def __init__(self, screen, assets_dir, w, h):
-        self.screen = screen; self.imgs = {}
+        self.screen = screen; self.imgs = {}; self.tile_w, self.tile_h = w, h
         for k, f in IMAGE_FN.items():
             p = os.path.join(assets_dir, f)
             if os.path.exists(p):
@@ -26,10 +26,14 @@ class UIDrawer:
         self.tl_f = pygame.font.SysFont(fn, 32, bold=True)
         self.bg_f = pygame.font.SysFont(fn, 64, bold=True)
 
-    def draw_t(self, x, y, name, back=False, highlight=False, horizontal=False):
+    def draw_t(self, x, y, name, back=False, highlight=False, horizontal=False, compact_horizontal=False):
         # 横向きの場合は画像とサイズを切り替え
         suffix = "_H" if horizontal else ""
-        w, h = (72, 54) if horizontal else (54, 72)
+        if horizontal and compact_horizontal:
+            w, h = self.tile_w, max(1, int(self.tile_w * self.tile_w / self.tile_h))
+            y = y + (self.tile_h - h) // 2
+        else:
+            w, h = (self.tile_h, self.tile_w) if horizontal else (self.tile_w, self.tile_h)
         rect = pygame.Rect(x, y, w, h)
         
         pygame.draw.rect(self.screen, (20,60,20), rect.move(3,3), border_radius=4)
@@ -38,7 +42,10 @@ class UIDrawer:
         img_key = "Back" + suffix if back else (name + suffix if name else "Front" + suffix)
         img = self.imgs.get(img_key)
         
-        if img: self.screen.blit(img, (x, y))
+        if img:
+            if horizontal and compact_horizontal:
+                img = pygame.transform.smoothscale(img, (w, h))
+            self.screen.blit(img, (x, y))
         elif not back and name:
             s = self.tl_f.render(name, True, (0,0,0))
             if horizontal: s = pygame.transform.rotate(s, 90)
@@ -55,15 +62,16 @@ class UIDrawer:
         pygame.draw.circle(self.screen, (200, 0, 0), (x + 50, y + 7), 4) # 中央の赤い点
 
     def draw_msg(self, msg, yaku_res, han, fu, cost):
-        pygame.draw.rect(self.screen, (0,0,0,230), (250,100,700,650), border_radius=15)
-        pygame.draw.rect(self.screen, (255,215,0), (250,100,700,650), 2, border_radius=15)
+        panel = pygame.Rect((self.screen.get_width() - 700) // 2, 100, 700, 650)
+        pygame.draw.rect(self.screen, (0,0,0,230), panel, border_radius=15)
+        pygame.draw.rect(self.screen, (255,215,0), panel, 2, border_radius=15)
         txt = self.bg_f.render(msg, True, (255,215,0))
-        self.screen.blit(txt, txt.get_rect(center=(600, 180)))
+        self.screen.blit(txt, txt.get_rect(center=(panel.centerx, 180)))
         info_s = self.tl_f.render(f"{han}翻 {fu}符  合計 {cost}点", True, (255,255,255))
-        self.screen.blit(info_s, info_s.get_rect(center=(600, 250)))
+        self.screen.blit(info_s, info_s.get_rect(center=(panel.centerx, 250)))
         for i, y in enumerate(yaku_res[:12]):
             ja_n = YAKU_JA.get(y['name'], y['name'])
             name_s = self.ui_f.render(ja_n, True, (220,220,220))
             han_s = self.ui_f.render(f"{y['han']}翻", True, (255,255,250))
-            self.screen.blit(name_s, (400, 300 + i*32)); self.screen.blit(han_s, (750, 300 + i*32))
-        self.screen.blit(self.ui_f.render("Spaceキーで次局へ", True, (255,215,0)), (500, 700))
+            self.screen.blit(name_s, (panel.x + 150, 300 + i*32)); self.screen.blit(han_s, (panel.right - 200, 300 + i*32))
+        self.screen.blit(self.ui_f.render("Spaceキーで次局へ", True, (255,215,0)), (panel.centerx - 100, 700))

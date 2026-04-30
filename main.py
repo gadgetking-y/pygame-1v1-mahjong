@@ -1,21 +1,59 @@
 # /// script
 # dependencies = ["pygame", "mahjong"]
 # ///
-import pygame, sys, random, os
+import pygame, sys, random, os, math, array
 from constants import *
 from logic import MahjongLogic
 from assets import download_assets, UIDrawer
 
 class MahjongGame:
     def __init__(self):
+        pygame.mixer.pre_init(44100, -16, 1, 512)
         pygame.init(); self.clock = pygame.time.Clock()
         download_assets(ASSETS_DIR)
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         pygame.display.set_caption("本格二人麻雀")
         self.drawer = UIDrawer(self.screen, ASSETS_DIR, TILE_W, TILE_H)
+        self.sounds = self.setup_sounds()
+        self.sound_enabled = True
         self.logic = MahjongLogic(); self.p_score, self.c_score = 30000, 30000
         self.match_round, self.renchan, self.dealer, self.showing_final = 1, 0, "player", False
         self.reset_round()
+
+    def setup_sounds(self):
+        if not pygame.mixer.get_init(): return {}
+
+        def tone(freqs, duration=0.08, volume=0.25):
+            rate = 44100
+            samples = array.array("h")
+            total = max(1, int(rate * duration))
+            for i in range(total):
+                t = i / rate
+                decay = 1 - (i / total)
+                value = sum(math.sin(2 * math.pi * f * t) for f in freqs) / len(freqs)
+                samples.append(int(32767 * volume * decay * value))
+            return pygame.mixer.Sound(buffer=samples.tobytes())
+
+        try:
+            return {
+                "tile": tone([620, 900], 0.045, 0.18),
+                "call": tone([420, 630], 0.09, 0.22),
+                "riichi": tone([720, 960, 1200], 0.12, 0.2),
+                "win": tone([520, 780, 1040], 0.28, 0.24),
+            }
+        except pygame.error:
+            return {}
+
+    def play_sound(self, name):
+        if not self.sound_enabled: return
+        sound = self.sounds.get(name)
+        if sound: sound.play()
+
+    def toggle_sound(self):
+        self.sound_enabled = not self.sound_enabled
+
+    def add_effect(self, text, x, y, color=COLOR_GOLD, duration=650, size="title"):
+        self.effects.append({"text": text, "x": x, "y": y, "color": color, "start": pygame.time.get_ticks(), "duration": duration, "size": size})
 
     def reset_round(self):
         all_ids = [i for i in range(136) if not (4 <= i < 32)]; random.shuffle(all_ids)
@@ -32,6 +70,7 @@ class MahjongGame:
         self.last_discard_context = {"is_houtei": False}
         self.msg, self.yaku_results, self.btns, self.timer = "", [], [], 0
         self.res_han, self.res_fu, self.res_cost = 0, 0, 0
+        self.effects = []
 
     def draw_t_initial(self):
         t = self.deck[self.wall_idx]; self.wall_idx += 1; return t
@@ -41,6 +80,57 @@ class MahjongGame:
         if self.wall_idx < len(self.deck) - 14:
             t = self.deck[self.wall_idx]; self.wall_idx += 1; return t
         return None
+
+    def get_layout(self):
+        info_rect = pygame.Rect(24, 24, 250, 380)
+        score_rect = pygame.Rect(24, 430, 240, 150)
+        action_x = SCREEN_W - 190
+        play_left = info_rect.right + 36
+        play_right = action_x - 40
+        discard_cols = 12
+        discard_step_x, discard_step_y = TILE_W + 6, TILE_H + 6
+        river_width = TILE_W + (discard_cols - 1) * discard_step_x
+        hand_width = 13 * SPACING + GAP + TILE_W
+        river_x = play_left + max(0, (play_right - play_left - river_width) // 2)
+        return {
+            "info_rect": info_rect,
+            "score_rect": score_rect,
+            "sound_rect": pygame.Rect(score_rect.x + 16, score_rect.y + 108, 150, 32),
+            "action_x": action_x,
+            "play_left": play_left,
+            "play_right": play_right,
+            "discard_cols": discard_cols,
+            "discard_step_x": discard_step_x,
+            "discard_step_y": discard_step_y,
+            "river_x": river_x,
+            "river_width": river_width,
+            "cpu_hand_y": 42,
+            "cpu_river_y": 178,
+            "player_river_y": 532,
+            "hand_x": play_left + max(0, (play_right - play_left - hand_width) // 2),
+            "meld_x": play_right - 210,
+            "riichi_x": river_x + river_width // 2 - 50,
+        }
+
+    def get_action_button_rect(self, slot, y, width=120, height=50):
+        gap = 10
+        x = SCREEN_W - 70 - width - slot * (width + gap)
+        return pygame.Rect(x, y, width, height)
+
+    def get_dora_pos(self, index):
+        layout = self.get_layout()
+        cols = 4
+        start_x = layout["info_rect"].x + 18
+        start_y = layout["info_rect"].y + 170
+        step_x, step_y = TILE_W + 6, TILE_H + 6
+        col, row = index % cols, index // cols
+        return start_x + col * step_x, start_y + row * step_y
+
+    def get_discard_pos(self, index, is_player):
+        layout = self.get_layout()
+        col, row = index % layout["discard_cols"], index // layout["discard_cols"]
+        y = layout["player_river_y"] - row * layout["discard_step_y"] if is_player else layout["cpu_river_y"] + row * layout["discard_step_y"]
+        return layout["river_x"] + col * layout["discard_step_x"], y
 
     def is_furiten(self, hand, melds, discards):
         waiting_tiles_34 = self.logic.get_waiting_tiles_34(hand, melds)
@@ -86,6 +176,8 @@ class MahjongGame:
         else:
             c = res.cost['total']; self.p_score += c if winner=="player" else -c; self.c_score += c if winner=="cpu" else -c
             self.msg = f"{winner.upper()} {'ツモ' if tsumo else 'ロン'}!"; self.res_han, self.res_fu, self.res_cost = res.han, res.fu, c
+            self.play_sound("win")
+            self.add_effect("ツモ" if tsumo else "ロン", SCREEN_W // 2, SCREEN_H // 2 - 80, COLOR_GOLD, 1000)
             self.yaku_results = []
             for y in res.yaku:
                 h = getattr(y, 'han_closed', 0) if not m else getattr(y, 'han_open', 0)
@@ -104,11 +196,33 @@ class MahjongGame:
         is_r = self.riichi_pending; t = self.drawn_t if idx == -1 else self.p_hand.pop(idx)
         if idx != -1 and self.drawn_t is not None: self.p_hand.append(self.drawn_t)
         self.p_hand = sorted(self.p_hand); self.p_dis.append({'id': t, 'horizontal': is_r}); self.last_dis, self.drawn_t = t, None
+        dx, dy = self.get_discard_pos(len(self.p_dis) - 1, True)
+        self.play_sound("riichi" if is_r else "tile")
+        self.add_effect("リーチ" if is_r else "打牌", dx + TILE_W // 2, dy - 8, COLOR_GOLD if is_r else COLOR_WHITE, 700, "small")
         self.last_discard_context = {"is_houtei": self.draw_context.get("is_haitei", False)}
         self.draw_context = {"is_rinshan": False, "is_haitei": False}
         if self.riichi_pending:
             self.p_riichi, self.p_score, self.riichi_pending, self.p_ippatsu_pending = True, self.p_score-1000, False, True
         self.current_turn, self.state = "cpu", "CHECK"
+
+    def draw_effects(self):
+        now = pygame.time.get_ticks()
+        alive = []
+        for effect in self.effects:
+            progress = (now - effect["start"]) / effect["duration"]
+            if progress >= 1: continue
+            alive.append(effect)
+            alpha = max(0, min(255, int(255 * (1 - progress))))
+            y = effect["y"] - int(28 * progress)
+            font = self.drawer.tl_f if effect["size"] == "small" else self.drawer.bg_f
+            text = font.render(effect["text"], True, effect["color"])
+            text.set_alpha(alpha)
+            rect = text.get_rect(center=(effect["x"], y))
+            glow = pygame.Surface((rect.width + 24, rect.height + 16), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (*effect["color"], max(0, alpha // 5)), glow.get_rect(), border_radius=8)
+            self.screen.blit(glow, glow.get_rect(center=rect.center))
+            self.screen.blit(text, rect)
+        self.effects = alive
 
     def update(self):
         if self.showing_final: return
@@ -134,15 +248,15 @@ class MahjongGame:
                 if total == 13:
                     if self.logic.is_win(self.p_hand + [t], self.p_melds):
                         if self.can_win(self.p_hand + [t], t, self.p_melds, True, self.p_riichi, self.dealer=="player", self.p_dis, self.get_win_context("player", True)):
-                            self.btns.append({"text": "TSUMO", "rect": pygame.Rect(950, 600, 120, 50)})
+                            self.btns.append({"text": "TSUMO", "rect": self.get_action_button_rect(0, 600)})
                 
                 # 槓の判定 (リーチ中でも暗槓は可能だが、待ちが変わらない判定は簡易的に「リーチ前」のみ許可)
                 kinds = [x//4 for x in self.p_hand]; t_kind = t//4
                 if kinds.count(t_kind) == 3 and not self.p_riichi:
-                    self.btns.append({"text": "KAN", "rect": pygame.Rect(950, 480, 120, 50)})
+                    self.btns.append({"text": "KAN", "rect": self.get_action_button_rect(0, 480)})
                 
                 if not self.p_riichi and not self.p_melds and self.logic.get_shanten(self.p_hand + [t]) <= 0:
-                    self.btns.append({"text": "RIICHI", "rect": pygame.Rect(950, 540, 120, 50)})
+                    self.btns.append({"text": "RIICHI", "rect": self.get_action_button_rect(0, 540)})
                 self.state = "WAIT" if not (self.p_riichi and not any(b["text"]=="TSUMO" for b in self.btns)) else "AUTO"
                 if self.state == "AUTO": self.timer = now + 800
             else: self.timer, self.state = now + 1000, "CPU"
@@ -160,17 +274,20 @@ class MahjongGame:
                 if not self.c_riichi and ms <= 0 and not self.c_melds:
                     self.c_riichi, self.c_score, is_h, self.c_ippatsu_pending = True, self.c_score-1000, True, True
                 self.c_dis.append({'id': bt, 'horizontal': is_h}); self.last_dis = bt; self.current_turn, self.state = "player", "CHECK"
+                dx, dy = self.get_discard_pos(len(self.c_dis) - 1, False)
+                self.play_sound("riichi" if is_h else "tile")
+                self.add_effect("リーチ" if is_h else "打牌", dx + TILE_W // 2, dy + TILE_H + 8, COLOR_GOLD if is_h else COLOR_WHITE, 700, "small")
                 self.last_discard_context = {"is_houtei": self.draw_context.get("is_haitei", False)}
                 self.draw_context = {"is_rinshan": False, "is_haitei": False}
         elif self.state == "CHECK":
             if self.current_turn == "player":
                 if self.logic.is_win(self.p_hand + [self.last_dis], self.p_melds):
                     if self.can_win(self.p_hand + [self.last_dis], self.last_dis, self.p_melds, False, self.p_riichi, self.dealer=="player", self.p_dis, self.get_win_context("player", False)):
-                        self.btns = [{"text": "RON", "rect": pygame.Rect(540, 450, 100, 50)}, {"text": "PASS", "rect": pygame.Rect(650, 450, 100, 50)}]
+                        self.btns = [{"text": "RON", "rect": self.get_action_button_rect(1, 450, 100)}, {"text": "PASS", "rect": self.get_action_button_rect(0, 450, 100)}]
                     else: self.state = "DRAW"
                 elif not self.p_riichi:
                     c = [tid//4 for tid in self.p_hand].count(self.last_dis//4)
-                    if c >= 2: self.btns = [{"text": "KAN" if c==3 else "PON", "rect": pygame.Rect(540, 450, 100, 50)}, {"text": "PASS", "rect": pygame.Rect(650, 450, 100, 50)}]
+                    if c >= 2: self.btns = [{"text": "KAN" if c==3 else "PON", "rect": self.get_action_button_rect(1, 450, 100)}, {"text": "PASS", "rect": self.get_action_button_rect(0, 450, 100)}]
                     else: self.state = "DRAW"
                 else: self.state = "DRAW"
             else:
@@ -178,40 +295,60 @@ class MahjongGame:
                 else: self.state = "DRAW"
 
     def draw(self):
+        layout = self.get_layout()
         self.screen.fill(COLOR_TABLE)
-        pygame.draw.rect(self.screen, (0,0,0,100), (20, 20, 150, 300), border_radius=8)
-        self.screen.blit(self.drawer.ui_f.render(f"東{self.match_round}局", True, COLOR_GOLD), (35, 210))
-        if self.renchan > 0: self.screen.blit(self.drawer.ui_f.render(f"{self.renchan}本場", True, COLOR_WHITE), (35, 235))
-        rem = len(self.deck)-14-self.wall_idx; self.screen.blit(self.drawer.ui_f.render(f"残り: {max(0, rem)}", True, COLOR_GOLD), (35, 260))
+        pygame.draw.rect(self.screen, (0,0,0,100), layout["info_rect"], border_radius=12)
+        self.screen.blit(self.drawer.tl_f.render("卓情報", True, COLOR_GOLD), (layout["info_rect"].x + 16, layout["info_rect"].y + 16))
+        self.screen.blit(self.drawer.ui_f.render(f"東{self.match_round}局", True, COLOR_WHITE), (layout["info_rect"].x + 18, layout["info_rect"].y + 56))
+        if self.renchan > 0: self.screen.blit(self.drawer.ui_f.render(f"{self.renchan}本場", True, COLOR_WHITE), (layout["info_rect"].x + 18, layout["info_rect"].y + 86))
+        rem = len(self.deck)-14-self.wall_idx; self.screen.blit(self.drawer.ui_f.render(f"残り: {max(0, rem)}", True, COLOR_GOLD), (layout["info_rect"].x + 18, layout["info_rect"].y + 116))
+        self.screen.blit(self.drawer.ui_f.render("ドラ表示牌", True, COLOR_GOLD), (layout["info_rect"].x + 18, layout["info_rect"].y + 146))
         di = self.logic.get_dora_indicators(self.deck, self.dora_count, (self.state=="END" and (self.p_riichi or self.c_riichi)))
-        for i, tid in enumerate(di): self.drawer.draw_t(40, 70 + i*80, self.logic.get_tile_str(tid))
-        for i, tid in enumerate(self.c_hand): self.drawer.draw_t(200+i*56, 50, self.logic.get_tile_str(tid), back=(self.state!="END" and not self.showing_final))
-        for i, tid in enumerate(self.p_hand): self.drawer.draw_t(200+i*56, HAND_Y, self.logic.get_tile_str(tid), highlight=(self.state=="WAIT" and not self.p_riichi))
-        if self.drawn_t is not None and self.current_turn=="player": self.drawer.draw_t(200+len(self.p_hand)*56+25, HAND_Y, self.logic.get_tile_str(self.drawn_t))
+        for i, tid in enumerate(di):
+            x, y = self.get_dora_pos(i)
+            self.drawer.draw_t(x, y, self.logic.get_tile_str(tid))
+        center_rect = pygame.Rect(layout["river_x"] - 20, layout["cpu_river_y"] - 24, layout["river_width"] + 40, layout["player_river_y"] - layout["cpu_river_y"] + TILE_H + 48)
+        pygame.draw.rect(self.screen, (18, 98, 43), center_rect, border_radius=14)
+        pygame.draw.rect(self.screen, (225, 210, 150), center_rect, 1, border_radius=14)
+        pygame.draw.line(self.screen, (225, 210, 150), (center_rect.x + 22, SCREEN_H // 2), (center_rect.right - 22, SCREEN_H // 2), 1)
+        for i, tid in enumerate(self.c_hand): self.drawer.draw_t(layout["hand_x"] + i * SPACING, layout["cpu_hand_y"], self.logic.get_tile_str(tid), back=(self.state!="END" and not self.showing_final))
+        for i, tid in enumerate(self.p_hand): self.drawer.draw_t(layout["hand_x"] + i * SPACING, HAND_Y, self.logic.get_tile_str(tid), highlight=(self.state=="WAIT" and not self.p_riichi))
+        if self.drawn_t is not None and self.current_turn=="player": self.drawer.draw_t(layout["hand_x"] + len(self.p_hand) * SPACING + GAP, HAND_Y, self.logic.get_tile_str(self.drawn_t))
         for i, m in enumerate(self.p_melds):
-            for j, tid in enumerate(m['ids']): self.drawer.draw_t(1000 - i*180 + j*56, HAND_Y, self.logic.get_tile_str(tid))
-        # 捨て牌レイアウト (重なり回避済み)
-        for i, d in enumerate(self.p_dis): self.drawer.draw_t(350+(i%10)*60, 640-(i//10)*85, self.logic.get_tile_str(d['id']), horizontal=d['horizontal'])
-        for i, d in enumerate(self.c_dis): self.drawer.draw_t(350+(i%10)*60, 140+(i//10)*85, self.logic.get_tile_str(d['id']), horizontal=d['horizontal'])
-        if self.p_riichi: self.drawer.draw_riichi_stick(550, 650)
-        if self.c_riichi: self.drawer.draw_riichi_stick(550, 130)
-        pygame.draw.rect(self.screen, (0,0,0,150), (20, 450, 200, 150), border_radius=10)
-        self.screen.blit(self.drawer.ui_f.render(f"YOU: {self.p_score}{'(親)' if self.dealer=='player' else ''}", True, COLOR_WHITE), (40, 480)); self.screen.blit(self.drawer.ui_f.render(f"CPU: {self.c_score}{'(親)' if self.dealer=='cpu' else ''}", True, COLOR_WHITE), (40, 530))
+            for j, tid in enumerate(m['ids']): self.drawer.draw_t(layout["meld_x"] - i * 180 + j * SPACING, HAND_Y, self.logic.get_tile_str(tid))
+        # 捨て牌は通常の河の並び方で、左から順に積んでいく
+        for i, d in enumerate(self.p_dis):
+            x, y = self.get_discard_pos(i, True)
+            self.drawer.draw_t(x, y, self.logic.get_tile_str(d['id']), horizontal=d['horizontal'], compact_horizontal=True)
+        for i, d in enumerate(self.c_dis):
+            x, y = self.get_discard_pos(i, False)
+            self.drawer.draw_t(x, y, self.logic.get_tile_str(d['id']), horizontal=d['horizontal'], compact_horizontal=True)
+        if self.p_riichi: self.drawer.draw_riichi_stick(layout["riichi_x"], layout["player_river_y"] + TILE_H + 14)
+        if self.c_riichi: self.drawer.draw_riichi_stick(layout["riichi_x"], layout["cpu_river_y"] - 28)
+        pygame.draw.rect(self.screen, (0,0,0,150), layout["score_rect"], border_radius=12)
+        self.screen.blit(self.drawer.ui_f.render(f"YOU: {self.p_score}{'(親)' if self.dealer=='player' else ''}", True, COLOR_WHITE), (layout["score_rect"].x + 16, layout["score_rect"].y + 28))
+        self.screen.blit(self.drawer.ui_f.render(f"CPU: {self.c_score}{'(親)' if self.dealer=='cpu' else ''}", True, COLOR_WHITE), (layout["score_rect"].x + 16, layout["score_rect"].y + 78))
+        sound_color = COLOR_GOLD if self.sound_enabled else (180, 180, 180)
+        pygame.draw.rect(self.screen, sound_color, layout["sound_rect"], border_radius=5)
+        sound_label = "SOUND ON" if self.sound_enabled else "SOUND OFF"
+        self.screen.blit(self.drawer.ui_f.render(sound_label, True, COLOR_BLACK), layout["sound_rect"].move(12, 3))
         for b in self.btns:
             pygame.draw.rect(self.screen, COLOR_GOLD if b["text"] in ["RON","TSUMO","RIICHI"] else COLOR_WHITE, b["rect"], border_radius=5)
             self.screen.blit(self.drawer.ui_f.render(b["text"], True, COLOR_BLACK), b["rect"].move(25, 12))
         if self.msg:
             if self.showing_final: self.draw_f_res()
             else: self.drawer.draw_msg(self.msg, self.yaku_results, self.res_han, self.res_fu, self.res_cost)
+        self.draw_effects()
         pygame.display.flip()
 
     def draw_f_res(self):
-        pygame.draw.rect(self.screen, (0,0,0,240), (200, 150, 800, 550), border_radius=20)
-        t = self.drawer.bg_f.render("東風戦 最終結果", True, COLOR_GOLD); self.screen.blit(t, t.get_rect(center=(600, 250)))
+        panel = pygame.Rect((SCREEN_W - 820) // 2, 150, 820, 550)
+        pygame.draw.rect(self.screen, (0,0,0,240), panel, border_radius=20)
+        t = self.drawer.bg_f.render("東風戦 最終結果", True, COLOR_GOLD); self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, 250)))
         winner = "YOU" if self.p_score > self.c_score else "CPU"
-        r_s = self.drawer.bg_f.render(f"優勝: {winner}!", True, COLOR_WHITE); self.screen.blit(r_s, r_s.get_rect(center=(600, 380)))
-        s_s = self.drawer.tl_f.render(f"YOU: {self.p_score}  vs  CPU: {self.c_score}", True, COLOR_GOLD); self.screen.blit(s_s, s_s.get_rect(center=(600, 480)))
-        self.screen.blit(self.drawer.ui_f.render("Spaceキーでリスタート", True, COLOR_WHITE), (450, 620))
+        r_s = self.drawer.bg_f.render(f"優勝: {winner}!", True, COLOR_WHITE); self.screen.blit(r_s, r_s.get_rect(center=(SCREEN_W // 2, 380)))
+        s_s = self.drawer.tl_f.render(f"YOU: {self.p_score}  vs  CPU: {self.c_score}", True, COLOR_GOLD); self.screen.blit(s_s, s_s.get_rect(center=(SCREEN_W // 2, 480)))
+        self.screen.blit(self.drawer.ui_f.render("Spaceキーでリスタート", True, COLOR_WHITE), (SCREEN_W // 2 - 100, 620))
 
     def run(self):
         while True:
@@ -219,12 +356,15 @@ class MahjongGame:
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     pos = pygame.mouse.get_pos(); action_done = False
+                    if self.get_layout()["sound_rect"].collidepoint(pos):
+                        self.toggle_sound(); action_done = True
                     for b in self.btns:
                         if b["rect"].collidepoint(pos):
                             if b["text"] == "RON": self.win(False, "player")
                             elif b["text"] == "TSUMO": self.win(True, "player")
                             elif b["text"] == "PON":
                                 self.clear_ippatsu()
+                                self.play_sound("call"); self.add_effect("ポン", SCREEN_W // 2, SCREEN_H // 2, COLOR_GOLD, 750)
                                 t = self.last_dis
                                 if self.drawn_t is not None: self.p_hand.append(self.drawn_t); self.drawn_t = None
                                 targets = [x for x in list(self.p_hand) if x//4 == t//4][:2]
@@ -233,6 +373,7 @@ class MahjongGame:
                                 self.p_melds.append({'ids': [t] + targets, 'opened': True}); self.current_turn, self.state, self.btns = "player", "WAIT", []
                             elif b["text"] == "KAN":
                                 self.clear_ippatsu()
+                                self.play_sound("call"); self.add_effect("カン", SCREEN_W // 2, SCREEN_H // 2, COLOR_GOLD, 750)
                                 is_m = (self.state == "CHECK"); t = self.last_dis if is_m else self.drawn_t
                                 if is_m and self.drawn_t is not None: self.p_hand.append(self.drawn_t); self.drawn_t = None
                                 ts = [x for x in list(self.p_hand) if x//4 == t//4]
@@ -246,14 +387,17 @@ class MahjongGame:
                             action_done = True; break
                     if not action_done and self.state == "WAIT" and self.current_turn == "player":
                         if self.p_riichi and not self.riichi_pending: continue
+                        layout = self.get_layout()
                         tc = False
                         for i in range(len(self.p_hand)):
-                            if pygame.Rect(200+i*56, HAND_Y, 54, 72).collidepoint(pos): self.discard(i); tc = True; break
-                        if not tc and self.drawn_t is not None and pygame.Rect(200+len(self.p_hand)*56+25, HAND_Y, 54, 72).collidepoint(pos): self.discard(-1)
+                            if pygame.Rect(layout["hand_x"] + i * SPACING, HAND_Y, TILE_W, TILE_H).collidepoint(pos): self.discard(i); tc = True; break
+                        if not tc and self.drawn_t is not None and pygame.Rect(layout["hand_x"] + len(self.p_hand) * SPACING + GAP, HAND_Y, TILE_W, TILE_H).collidepoint(pos): self.discard(-1)
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and self.state == "END":
                     if self.showing_final: self.p_score, self.c_score, self.match_round, self.renchan, self.dealer, self.showing_final = 30000, 30000, 1, 0, "player", False; self.reset_round()
                     elif self.match_round > 4 or self.p_score < 0 or self.c_score < 0: self.showing_final = True
                     else: self.reset_round()
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                    self.toggle_sound()
             self.update(); self.draw(); self.clock.tick(60)
 
 if __name__ == "__main__": MahjongGame().run()
