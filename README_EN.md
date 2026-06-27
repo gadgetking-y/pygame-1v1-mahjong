@@ -50,7 +50,8 @@ uv run main.py
 ## Dependencies
 
 - **GUI / Audio**: [Pygame](https://www.pygame.org/)
-- **Yaku Calculation & Shanten**: [mahjong](https://github.com/craiix/mahjong) (Riichi Mahjong hand calculator and shanten analyzer for Python)
+- **Yaku Calculation & Shanten**: [mahjong](https://github.com/MahjongRepository/mahjong) (Riichi Mahjong hand calculator and shanten analyzer for Python)
+
 
 ## License
 

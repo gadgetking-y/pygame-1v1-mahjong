@@ -54,7 +54,8 @@ uv run main.py
 ## 使用ライブラリ・依存関係
 
 - **GUI・描画・音声**: [Pygame](https://www.pygame.org/)
-- **役判定・点数計算・シャンテン数計算**: [mahjong](https://github.com/craiix/mahjong) (Python用 麻雀点数・役判定・シャンテン数計算ライブラリ)
+- **役判定・点数計算・シャンテン数計算**: [mahjong](https://github.com/MahjongRepository/mahjong) (Python用 麻雀点数・役判定・シャンテン数計算ライブラリ)
+
 
 ## ライセンス
 
