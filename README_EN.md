@@ -2,6 +2,9 @@
 
 A full-featured 1v1 Riichi Mahjong game built with Pygame. Features smooth scaling, realistic tile graphics, accurate yaku calculation, and a modernized board UI.
 
+![Game Screenshot](docs/game_screenshot.png)
+
+
 ## Features
 
 - **Sleek Modern Graphics**: High-quality tile assets automatically downloaded, framed in a luxury green-felt table design.
