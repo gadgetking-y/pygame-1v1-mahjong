@@ -56,8 +56,9 @@ class MahjongGame:
         self.effects.append({"text": text, "x": x, "y": y, "color": color, "start": pygame.time.get_ticks(), "duration": duration, "size": size})
 
     def reset_round(self):
-        all_ids = [i for i in range(136) if not (4 <= i < 32)]; random.shuffle(all_ids)
+        all_ids = list(range(136)); random.shuffle(all_ids)
         self.deck = all_ids; self.wall_idx, self.dora_count = 0, 1
+
         self.p_hand = sorted([self.draw_t_initial() for _ in range(13)])
         self.c_hand = sorted([self.draw_t_initial() for _ in range(13)])
         self.p_dis, self.c_dis, self.p_melds, self.c_melds = [], [], [], []

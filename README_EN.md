@@ -15,10 +15,11 @@ A full-featured 1v1 Riichi Mahjong game built with Pygame. Features smooth scali
 
 Designed for fast-paced gameplay with the following adjustments:
 
-1. **Tiles Used (108 tiles total)**:
-   - **Characters (Manzu)**: 1 and 9 only (2–8 excluded)
+1. **Tiles Used (136 tiles total)**:
+   - **Characters (Manzu)**: 1 through 9 (All tiles included)
    - **Circles (Pinzu)**: 1 through 9
    - **Bamboo (Souzu)**: 1 through 9
+
    - **Honors (Zai)**: East, South, West, North, White, Green, Red
 2. **Winning Conditions**:
    - Standard 4 melds + 1 pair, or **Chiitoitsu** (7 distinct pairs).
