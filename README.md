@@ -51,7 +51,13 @@ uv run main.py
 - **効果音**: スコア欄の SOUND ボタン、または **Mキー** でオン/オフを切り替えられます。
 - **リスタート**: 対局終了後、**スペースキー**を押すと次の対局（次局）が始まります。
 
+## 使用ライブラリ・依存関係
+
+- **GUI・描画・音声**: [Pygame](https://www.pygame.org/)
+- **役判定・点数計算・シャンテン数計算**: [mahjong](https://github.com/craiix/mahjong) (Python用 麻雀点数・役判定・シャンテン数計算ライブラリ)
+
 ## ライセンス
 
 - ソースコード: MIT License
 - 牌画像: [FluffyStuff/riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles) (CC0)
+

@@ -47,7 +47,13 @@ uv run main.py
 - **Sound Effect**: Toggle via the SOUND button in the score panel or press **M**.
 - **Restart Game**: Press **Spacebar** at the end of a match to proceed to the next round.
 
+## Dependencies
+
+- **GUI / Audio**: [Pygame](https://www.pygame.org/)
+- **Yaku Calculation & Shanten**: [mahjong](https://github.com/craiix/mahjong) (Riichi Mahjong hand calculator and shanten analyzer for Python)
+
 ## License
 
 - Source Code: MIT License
 - Tile Images: [FluffyStuff/riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles) (CC0)
+
