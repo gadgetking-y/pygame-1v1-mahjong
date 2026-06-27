@@ -82,20 +82,22 @@ class MahjongGame:
         return None
 
     def get_layout(self):
-        info_rect = pygame.Rect(24, 24, 250, 380)
-        score_rect = pygame.Rect(24, 430, 240, 150)
-        action_x = SCREEN_W - 190
-        play_left = info_rect.right + 36
-        play_right = action_x - 40
-        discard_cols = 12
-        discard_step_x, discard_step_y = TILE_W + 6, TILE_H + 6
-        river_width = TILE_W + (discard_cols - 1) * discard_step_x
+        side_rect = pygame.Rect(28, 28, 280, 794)
+        action_x = SCREEN_W - 180
+        play_left = side_rect.right + 32
+        play_right = action_x - 30
+        play_center_x = (play_left + play_right) // 2
+        discard_cols = 10
+        discard_step_x, discard_step_y = TILE_W + 4, TILE_H + 4
+        river_width = 10 * discard_step_x + 20 # 10枚並び（横向き牌考慮の余裕）
+        river_x = play_center_x - river_width // 2
         hand_width = 13 * SPACING + GAP + TILE_W
-        river_x = play_left + max(0, (play_right - play_left - river_width) // 2)
         return {
-            "info_rect": info_rect,
-            "score_rect": score_rect,
-            "sound_rect": pygame.Rect(score_rect.x + 16, score_rect.y + 108, 150, 32),
+            "side_rect": side_rect,
+            "info_rect": pygame.Rect(side_rect.x + 14, side_rect.y + 14, side_rect.width - 28, 170),
+            "dora_rect": pygame.Rect(side_rect.x + 14, side_rect.y + 200, side_rect.width - 28, 110),
+            "score_rect": pygame.Rect(side_rect.x + 14, side_rect.y + 326, side_rect.width - 28, 380),
+            "sound_rect": pygame.Rect(side_rect.x + 30, side_rect.y + 724, side_rect.width - 60, 40),
             "action_x": action_x,
             "play_left": play_left,
             "play_right": play_right,
@@ -104,33 +106,37 @@ class MahjongGame:
             "discard_step_y": discard_step_y,
             "river_x": river_x,
             "river_width": river_width,
-            "cpu_hand_y": 42,
-            "cpu_river_y": 178,
-            "player_river_y": 532,
-            "hand_x": play_left + max(0, (play_right - play_left - hand_width) // 2),
-            "meld_x": play_right - 210,
-            "riichi_x": river_x + river_width // 2 - 50,
+            "cpu_hand_y": 45,
+            "cpu_river_y": 160,
+            "player_river_y": 540,
+            "hand_x": play_center_x - hand_width // 2,
+            "meld_x": play_right - 180,
+            "riichi_x": play_center_x - 55,
         }
 
+
     def get_action_button_rect(self, slot, y, width=120, height=50):
-        gap = 10
-        x = SCREEN_W - 70 - width - slot * (width + gap)
+        gap = 12
+        x = SCREEN_W - 60 - width - slot * (width + gap)
         return pygame.Rect(x, y, width, height)
 
     def get_dora_pos(self, index):
         layout = self.get_layout()
-        cols = 4
-        start_x = layout["info_rect"].x + 18
-        start_y = layout["info_rect"].y + 170
-        step_x, step_y = TILE_W + 6, TILE_H + 6
-        col, row = index % cols, index // cols
-        return start_x + col * step_x, start_y + row * step_y
+        d_rect = layout["dora_rect"]
+        scale = 0.78
+        w = int(TILE_W * scale)
+        step_x = w + 4
+        start_x = d_rect.centerx - (5 * step_x) // 2
+        start_y = d_rect.y + 45
+        return start_x + index * step_x, start_y
 
     def get_discard_pos(self, index, is_player):
         layout = self.get_layout()
         col, row = index % layout["discard_cols"], index // layout["discard_cols"]
         y = layout["player_river_y"] - row * layout["discard_step_y"] if is_player else layout["cpu_river_y"] + row * layout["discard_step_y"]
+        # 概算X位置（エフェクト表示用）
         return layout["river_x"] + col * layout["discard_step_x"], y
+
 
     def is_furiten(self, hand, melds, discards):
         waiting_tiles_34 = self.logic.get_waiting_tiles_34(hand, melds)
@@ -297,49 +303,140 @@ class MahjongGame:
     def draw(self):
         layout = self.get_layout()
         self.screen.fill(COLOR_TABLE)
-        pygame.draw.rect(self.screen, (0,0,0,100), layout["info_rect"], border_radius=12)
-        self.screen.blit(self.drawer.tl_f.render("卓情報", True, COLOR_GOLD), (layout["info_rect"].x + 16, layout["info_rect"].y + 16))
-        self.screen.blit(self.drawer.ui_f.render(f"東{self.match_round}局", True, COLOR_WHITE), (layout["info_rect"].x + 18, layout["info_rect"].y + 56))
-        if self.renchan > 0: self.screen.blit(self.drawer.ui_f.render(f"{self.renchan}本場", True, COLOR_WHITE), (layout["info_rect"].x + 18, layout["info_rect"].y + 86))
-        rem = len(self.deck)-14-self.wall_idx; self.screen.blit(self.drawer.ui_f.render(f"残り: {max(0, rem)}", True, COLOR_GOLD), (layout["info_rect"].x + 18, layout["info_rect"].y + 116))
-        self.screen.blit(self.drawer.ui_f.render("ドラ表示牌", True, COLOR_GOLD), (layout["info_rect"].x + 18, layout["info_rect"].y + 146))
+        
+        # 外枠ラグジュアリーフレーム
+        pygame.draw.rect(self.screen, COLOR_TABLE_BORDER, (0, 0, SCREEN_W, SCREEN_H), 8)
+        
+        # --- 左サイドパネル ---
+        side = layout["side_rect"]
+        pygame.draw.rect(self.screen, (12, 28, 18), side, border_radius=16)
+        pygame.draw.rect(self.screen, (40, 90, 55), side, 2, border_radius=16)
+        
+        # 1. 卓情報
+        info = layout["info_rect"]
+        pygame.draw.rect(self.screen, (20, 45, 30), info, border_radius=10)
+        self.screen.blit(self.drawer.tl_f.render("対局情報", True, COLOR_GOLD), (info.x + 16, info.y + 14))
+        self.screen.blit(self.drawer.ui_f.render(f"東{self.match_round}局  {self.renchan}本場", True, COLOR_WHITE), (info.x + 16, info.y + 58))
+        rem = max(0, len(self.deck) - 14 - self.wall_idx)
+        self.screen.blit(self.drawer.ui_f.render(f"残り山牌: {rem}枚", True, COLOR_CYAN), (info.x + 16, info.y + 104))
+        
+        # 2. ドラ表示エリア（王牌5枚）
+        dora_r = layout["dora_rect"]
+        pygame.draw.rect(self.screen, (20, 45, 30), dora_r, border_radius=10)
+        self.screen.blit(self.drawer.ui_f.render("ドラ表示牌", True, COLOR_GOLD), (dora_r.x + 14, dora_r.y + 10))
         di = self.logic.get_dora_indicators(self.deck, self.dora_count, (self.state=="END" and (self.p_riichi or self.c_riichi)))
-        for i, tid in enumerate(di):
+        # 5枚分（ドラ表示牌 + 未めくりの王牌）
+        for i in range(5):
             x, y = self.get_dora_pos(i)
-            self.drawer.draw_t(x, y, self.logic.get_tile_str(tid))
-        center_rect = pygame.Rect(layout["river_x"] - 20, layout["cpu_river_y"] - 24, layout["river_width"] + 40, layout["player_river_y"] - layout["cpu_river_y"] + TILE_H + 48)
-        pygame.draw.rect(self.screen, (18, 98, 43), center_rect, border_radius=14)
-        pygame.draw.rect(self.screen, (225, 210, 150), center_rect, 1, border_radius=14)
-        pygame.draw.line(self.screen, (225, 210, 150), (center_rect.x + 22, SCREEN_H // 2), (center_rect.right - 22, SCREEN_H // 2), 1)
-        for i, tid in enumerate(self.c_hand): self.drawer.draw_t(layout["hand_x"] + i * SPACING, layout["cpu_hand_y"], self.logic.get_tile_str(tid), back=(self.state!="END" and not self.showing_final))
-        for i, tid in enumerate(self.p_hand): self.drawer.draw_t(layout["hand_x"] + i * SPACING, HAND_Y, self.logic.get_tile_str(tid), highlight=(self.state=="WAIT" and not self.p_riichi))
-        if self.drawn_t is not None and self.current_turn=="player": self.drawer.draw_t(layout["hand_x"] + len(self.p_hand) * SPACING + GAP, HAND_Y, self.logic.get_tile_str(self.drawn_t))
+            if i < len(di):
+                self.drawer.draw_t(x, y, self.logic.get_tile_str(di[i]), scale=0.78)
+            else:
+                self.drawer.draw_t(x, y, "", back=True, scale=0.78)
+                
+        # 3. スコア・対戦者情報
+        score_r = layout["score_rect"]
+        pygame.draw.rect(self.screen, (20, 45, 30), score_r, border_radius=10)
+        self.screen.blit(self.drawer.tl_f.render("対局者スコア", True, COLOR_GOLD), (score_r.x + 16, score_r.y + 16))
+        
+        # CPU スコアプレート
+        cpu_box = pygame.Rect(score_r.x + 12, score_r.y + 60, score_r.width - 24, 110)
+        pygame.draw.rect(self.screen, (15, 35, 24), cpu_box, border_radius=8)
+        self.screen.blit(self.drawer.ui_f.render("CPU", True, (200, 220, 210)), (cpu_box.x + 14, cpu_box.y + 16))
+        if self.dealer == "cpu":
+            dealer_badge = pygame.Rect(cpu_box.right - 54, cpu_box.y + 14, 40, 24)
+            pygame.draw.rect(self.screen, COLOR_GOLD, dealer_badge, border_radius=6)
+            txt_parent = self.drawer.sm_f.render("親", True, COLOR_BLACK)
+            self.screen.blit(txt_parent, txt_parent.get_rect(center=dealer_badge.center))
+        self.screen.blit(self.drawer.tl_f.render(f"{self.c_score} 点", True, COLOR_WHITE), (cpu_box.x + 14, cpu_box.y + 54))
+
+        # YOU スコアプレート
+        you_box = pygame.Rect(score_r.x + 12, score_r.y + 190, score_r.width - 24, 110)
+        pygame.draw.rect(self.screen, (15, 35, 24), you_box, border_radius=8)
+        self.screen.blit(self.drawer.ui_f.render("YOU (あなた)", True, COLOR_GOLD), (you_box.x + 14, you_box.y + 16))
+        if self.dealer == "player":
+            dealer_badge = pygame.Rect(you_box.right - 54, you_box.y + 14, 40, 24)
+            pygame.draw.rect(self.screen, COLOR_GOLD, dealer_badge, border_radius=6)
+            txt_parent = self.drawer.sm_f.render("親", True, COLOR_BLACK)
+            self.screen.blit(txt_parent, txt_parent.get_rect(center=dealer_badge.center))
+        self.screen.blit(self.drawer.tl_f.render(f"{self.p_score} 点", True, COLOR_WHITE), (you_box.x + 14, you_box.y + 54))
+
+
+        # SOUNDボタン
+        sound_r = layout["sound_rect"]
+        sound_bg = (40, 120, 70) if self.sound_enabled else (60, 70, 65)
+        pygame.draw.rect(self.screen, sound_bg, sound_r, border_radius=8)
+        pygame.draw.rect(self.screen, COLOR_GOLD if self.sound_enabled else (120,120,120), sound_r, 1, border_radius=8)
+        sound_label = "🔊 SOUND ON" if self.sound_enabled else "🔇 SOUND OFF"
+        self.screen.blit(self.drawer.ui_f.render(sound_label, True, COLOR_WHITE), sound_r.move(25, 8))
+
+        # --- 中央河（卓の中央エリア） ---
+        center_x = (layout["play_left"] + layout["play_right"]) // 2
+        center_rect = pygame.Rect(center_x - 290, 130, 580, 500)
+        pygame.draw.rect(self.screen, (16, 75, 40), center_rect, border_radius=16)
+        pygame.draw.rect(self.screen, (70, 140, 95), center_rect, 2, border_radius=16)
+        
+        # 中央仕切り線（CPU河とPlayer河を隔てる正確な中央線）
+        mid_y = 382
+        pygame.draw.line(self.screen, (50, 110, 75), (center_rect.x + 20, mid_y), (center_rect.right - 20, mid_y), 2)
+
+        # --- 手牌と鳴き牌 ---
+        # CPU手牌
+        for i, tid in enumerate(self.c_hand):
+            self.drawer.draw_t(layout["hand_x"] + i * SPACING, layout["cpu_hand_y"], self.logic.get_tile_str(tid), back=(self.state!="END" and not self.showing_final))
+        # Player手牌
+        for i, tid in enumerate(self.p_hand):
+            self.drawer.draw_t(layout["hand_x"] + i * SPACING, HAND_Y, self.logic.get_tile_str(tid), highlight=(self.state=="WAIT" and not self.p_riichi))
+        if self.drawn_t is not None and self.current_turn=="player":
+            self.drawer.draw_t(layout["hand_x"] + len(self.p_hand) * SPACING + GAP, HAND_Y, self.logic.get_tile_str(self.drawn_t))
+        # Player副露
         for i, m in enumerate(self.p_melds):
-            for j, tid in enumerate(m['ids']): self.drawer.draw_t(layout["meld_x"] - i * 180 + j * SPACING, HAND_Y, self.logic.get_tile_str(tid))
-        # 捨て牌は通常の河の並び方で、左から順に積んでいく
-        for i, d in enumerate(self.p_dis):
-            x, y = self.get_discard_pos(i, True)
-            self.drawer.draw_t(x, y, self.logic.get_tile_str(d['id']), horizontal=d['horizontal'], compact_horizontal=True)
-        for i, d in enumerate(self.c_dis):
-            x, y = self.get_discard_pos(i, False)
-            self.drawer.draw_t(x, y, self.logic.get_tile_str(d['id']), horizontal=d['horizontal'], compact_horizontal=True)
-        if self.p_riichi: self.drawer.draw_riichi_stick(layout["riichi_x"], layout["player_river_y"] + TILE_H + 14)
-        if self.c_riichi: self.drawer.draw_riichi_stick(layout["riichi_x"], layout["cpu_river_y"] - 28)
-        pygame.draw.rect(self.screen, (0,0,0,150), layout["score_rect"], border_radius=12)
-        self.screen.blit(self.drawer.ui_f.render(f"YOU: {self.p_score}{'(親)' if self.dealer=='player' else ''}", True, COLOR_WHITE), (layout["score_rect"].x + 16, layout["score_rect"].y + 28))
-        self.screen.blit(self.drawer.ui_f.render(f"CPU: {self.c_score}{'(親)' if self.dealer=='cpu' else ''}", True, COLOR_WHITE), (layout["score_rect"].x + 16, layout["score_rect"].y + 78))
-        sound_color = COLOR_GOLD if self.sound_enabled else (180, 180, 180)
-        pygame.draw.rect(self.screen, sound_color, layout["sound_rect"], border_radius=5)
-        sound_label = "SOUND ON" if self.sound_enabled else "SOUND OFF"
-        self.screen.blit(self.drawer.ui_f.render(sound_label, True, COLOR_BLACK), layout["sound_rect"].move(12, 3))
+            for j, tid in enumerate(m['ids']):
+                self.drawer.draw_t(layout["meld_x"] - i * 170 + j * (SPACING - 4), HAND_Y, self.logic.get_tile_str(tid))
+
+        # --- 河（捨て牌）の描画 ---
+        # 1行10枚で累積X座標計算を行い、二人麻雀の大盛り捨て牌も美しく並べる
+        def draw_river_discards(discards, is_player):
+            cols = layout["discard_cols"]
+            max_rows = max(3, math.ceil(len(discards) / cols))
+            for row_idx in range(max_rows):
+                row_discards = discards[row_idx * cols : (row_idx + 1) * cols]
+                if not row_discards: continue
+                
+                # 行ごとのY座標
+                base_y = layout["player_river_y"] - row_idx * layout["discard_step_y"] if is_player else layout["cpu_river_y"] + row_idx * layout["discard_step_y"]
+                cur_x = layout["river_x"]
+                
+                for d in row_discards:
+                    is_h = d['horizontal']
+                    # 横向き時はY位置を中央寄せ調整
+                    tile_y = base_y + (TILE_H - TILE_W) // 2 if is_h else base_y
+                    self.drawer.draw_t(cur_x, tile_y, self.logic.get_tile_str(d['id']), horizontal=is_h)
+                    cur_x += (TILE_H + 4) if is_h else (TILE_W + 4)
+
+        draw_river_discards(self.c_dis, False)
+        draw_river_discards(self.p_dis, True)
+
+
+        # --- リーチ棒 ---
+        if self.p_riichi:
+            self.drawer.draw_riichi_stick(layout["riichi_x"], layout["player_river_y"] + TILE_H + 12)
+        if self.c_riichi:
+            self.drawer.draw_riichi_stick(layout["riichi_x"], layout["cpu_river_y"] - 24)
+
+        # --- アクションボタン ---
         for b in self.btns:
-            pygame.draw.rect(self.screen, COLOR_GOLD if b["text"] in ["RON","TSUMO","RIICHI"] else COLOR_WHITE, b["rect"], border_radius=5)
-            self.screen.blit(self.drawer.ui_f.render(b["text"], True, COLOR_BLACK), b["rect"].move(25, 12))
+            btn_col = COLOR_GOLD if b["text"] in ["RON","TSUMO","RIICHI"] else (240, 240, 240)
+            pygame.draw.rect(self.screen, btn_col, b["rect"], border_radius=8)
+            pygame.draw.rect(self.screen, (40,40,40), b["rect"], 1, border_radius=8)
+            txt_s = self.drawer.tl_f.render(b["text"], True, COLOR_BLACK)
+            self.screen.blit(txt_s, txt_s.get_rect(center=b["rect"].center))
+
         if self.msg:
             if self.showing_final: self.draw_f_res()
             else: self.drawer.draw_msg(self.msg, self.yaku_results, self.res_han, self.res_fu, self.res_cost)
         self.draw_effects()
         pygame.display.flip()
+
 
     def draw_f_res(self):
         panel = pygame.Rect((SCREEN_W - 820) // 2, 150, 820, 550)

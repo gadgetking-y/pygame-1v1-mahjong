@@ -17,61 +17,73 @@ class UIDrawer:
             if os.path.exists(p):
                 base_img = pygame.image.load(p).convert_alpha()
                 self.imgs[k] = pygame.transform.smoothscale(base_img, (w, h))
-                # 横向き用の画像も生成
                 self.imgs[k + "_H"] = pygame.transform.rotate(self.imgs[k], 90)
         
         ja_f = ["hiraginosansgbw3", "msgothic", "stheitimedium", "arialunicode", "applesdgothicneo", "notosanscjkjp"]
         fn = next((f for f in ja_f if f in pygame.font.get_fonts()), None)
-        self.ui_f = pygame.font.SysFont(fn, 24)
-        self.tl_f = pygame.font.SysFont(fn, 32, bold=True)
-        self.bg_f = pygame.font.SysFont(fn, 64, bold=True)
+        self.sm_f = pygame.font.SysFont(fn, 16, bold=True)
+        self.ui_f = pygame.font.SysFont(fn, 22)
+        self.tl_f = pygame.font.SysFont(fn, 28, bold=True)
+        self.bg_f = pygame.font.SysFont(fn, 56, bold=True)
 
-    def draw_t(self, x, y, name, back=False, highlight=False, horizontal=False, compact_horizontal=False):
-        # 横向きの場合は画像とサイズを切り替え
+
+    def draw_t(self, x, y, name, back=False, highlight=False, horizontal=False, scale=1.0):
+        """牌を描画。横向き（リーチ）の場合は縦横比を正しく保って幅tile_h * scale, 高さtile_w * scaleで描画"""
+        bw = int((self.tile_h if horizontal else self.tile_w) * scale)
+        bh = int((self.tile_w if horizontal else self.tile_h) * scale)
+        rect = pygame.Rect(x, y, bw, bh)
+        
+        # 影と本体
+        pygame.draw.rect(self.screen, (10, 35, 15), rect.move(2, 3), border_radius=4)
+        body_color = (240, 110, 20) if back else (255, 255, 250)
+        pygame.draw.rect(self.screen, body_color, rect, border_radius=4)
+        
         suffix = "_H" if horizontal else ""
-        if horizontal and compact_horizontal:
-            w, h = self.tile_w, max(1, int(self.tile_w * self.tile_w / self.tile_h))
-            y = y + (self.tile_h - h) // 2
-        else:
-            w, h = (self.tile_h, self.tile_w) if horizontal else (self.tile_w, self.tile_h)
-        rect = pygame.Rect(x, y, w, h)
-        
-        pygame.draw.rect(self.screen, (20,60,20), rect.move(3,3), border_radius=4)
-        pygame.draw.rect(self.screen, (255,255,250) if not back else (255,120,0), rect, border_radius=4)
-        
         img_key = "Back" + suffix if back else (name + suffix if name else "Front" + suffix)
         img = self.imgs.get(img_key)
         
         if img:
-            if horizontal and compact_horizontal:
-                img = pygame.transform.smoothscale(img, (w, h))
+            if scale != 1.0:
+                img = pygame.transform.smoothscale(img, (bw, bh))
             self.screen.blit(img, (x, y))
         elif not back and name:
-            s = self.tl_f.render(name, True, (0,0,0))
+            s = self.ui_f.render(name, True, (0,0,0))
             if horizontal: s = pygame.transform.rotate(s, 90)
             self.screen.blit(s, s.get_rect(center=rect.center))
             
-        pygame.draw.rect(self.screen, (0,0,0), rect, 1, border_radius=4)
-        if highlight: pygame.draw.rect(self.screen, (255,215,0), rect, 3, border_radius=4)
+        border_col = (255, 215, 0) if highlight else (40, 40, 40)
+        border_w = 2 if highlight else 1
+        pygame.draw.rect(self.screen, border_col, rect, border_w, border_radius=4)
 
     def draw_riichi_stick(self, x, y):
-        """リーチ点棒を描画"""
-        stick_rect = pygame.Rect(x, y, 100, 15)
-        pygame.draw.rect(self.screen, (240, 240, 240), stick_rect, border_radius=5)
-        pygame.draw.rect(self.screen, (0, 0, 0), stick_rect, 1, border_radius=5)
-        pygame.draw.circle(self.screen, (200, 0, 0), (x + 50, y + 7), 4) # 中央の赤い点
+        """立体感のあるきれいな1000点リーチ棒を描画"""
+        stick_rect = pygame.Rect(x, y, 110, 14)
+        shadow_rect = stick_rect.move(2, 2)
+        pygame.draw.rect(self.screen, (10, 30, 15, 120), shadow_rect, border_radius=7)
+        pygame.draw.rect(self.screen, (245, 245, 242), stick_rect, border_radius=7)
+        pygame.draw.rect(self.screen, (180, 180, 175), stick_rect, 1, border_radius=7)
+        # 中央の点
+        pygame.draw.circle(self.screen, (220, 20, 20), (x + 55, y + 7), 4)
+        pygame.draw.circle(self.screen, (255, 100, 100), (x + 54, y + 6), 1)
 
     def draw_msg(self, msg, yaku_res, han, fu, cost):
-        panel = pygame.Rect((self.screen.get_width() - 700) // 2, 100, 700, 650)
-        pygame.draw.rect(self.screen, (0,0,0,230), panel, border_radius=15)
-        pygame.draw.rect(self.screen, (255,215,0), panel, 2, border_radius=15)
-        txt = self.bg_f.render(msg, True, (255,215,0))
+        panel = pygame.Rect((self.screen.get_width() - 680) // 2, 110, 680, 630)
+        pygame.draw.rect(self.screen, (15, 25, 20, 240), panel, border_radius=16)
+        pygame.draw.rect(self.screen, (255, 215, 0), panel, 2, border_radius=16)
+        txt = self.bg_f.render(msg, True, (255, 215, 0))
         self.screen.blit(txt, txt.get_rect(center=(panel.centerx, 180)))
-        info_s = self.tl_f.render(f"{han}翻 {fu}符  合計 {cost}点", True, (255,255,255))
-        self.screen.blit(info_s, info_s.get_rect(center=(panel.centerx, 250)))
+        info_s = self.tl_f.render(f"{han}翻 {fu}符  合計 {cost}点", True, (255, 255, 255))
+        self.screen.blit(info_s, info_s.get_rect(center=(panel.centerx, 245)))
+        
+        # 役一覧
         for i, y in enumerate(yaku_res[:12]):
             ja_n = YAKU_JA.get(y['name'], y['name'])
-            name_s = self.ui_f.render(ja_n, True, (220,220,220))
-            han_s = self.ui_f.render(f"{y['han']}翻", True, (255,255,250))
-            self.screen.blit(name_s, (panel.x + 150, 300 + i*32)); self.screen.blit(han_s, (panel.right - 200, 300 + i*32))
-        self.screen.blit(self.ui_f.render("Spaceキーで次局へ", True, (255,215,0)), (panel.centerx - 100, 700))
+            name_s = self.ui_f.render(ja_n, True, (220, 220, 220))
+            han_s = self.ui_f.render(f"{y['han']}翻", True, (255, 215, 0))
+            y_pos = 295 + i * 30
+            self.screen.blit(name_s, (panel.x + 140, y_pos))
+            self.screen.blit(han_s, (panel.right - 180, y_pos))
+            
+        space_txt = self.ui_f.render("Spaceキーで次局へ", True, (255, 215, 0))
+        self.screen.blit(space_txt, space_txt.get_rect(center=(panel.centerx, 690)))
+
